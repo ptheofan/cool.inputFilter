@@ -24,11 +24,11 @@
  * Example
  * $('#myTextbox').inputFilter({regex: new RegExp('^\\d*$|^\\d*(\\.|\\,)\\d{0,2}$')});
  */
+$(function(){
 $.widget('cool.inputFilter', {
     options: {
-        // RegExp object to use for validation. If not suitable you can use the
-        // validate event and validate any way you see fit
-        regex: null
+        // RegExp object to use for validation. Can be null if you register your own validate event handler
+        regex: null,
     },
 
 
@@ -36,11 +36,9 @@ $.widget('cool.inputFilter', {
      *
      */
     _init: function() {
-        var me = this;
-
-        this.element.on('keydown', {me: me}, this._keyDown);
-        this.element.on('keypress', {me: me}, this._keyPress);
-        this.element.on('paste', {me: me}, this._paste);
+        this.element.on('keydown', $.proxy(this._keyDown, this));
+        this.element.on('keypress', $.proxy(this._keyPress, this));
+        this.element.on('paste', $.proxy(this._paste, this));
     },
 
 
@@ -51,6 +49,7 @@ $.widget('cool.inputFilter', {
         // Unbind the events
         this.element.off('keydown', this._keyDown);
         this.element.off('keydown', this._keyPress);
+        this.element.off('paste', this._paste);
 
 
         // Call parent
@@ -64,18 +63,18 @@ $.widget('cool.inputFilter', {
     _keyDown: function(evt) {
         // Get keycode
         var key = evt.charCode || evt.keyCode;
-        var value = evt.data.me.element[0].value;
+        var value = this.element[0].value;
 
         if (key === 8) {
             // Simulate backspace
-            value = evt.data.me._simulateBackspace();
+            value = this._simulateBackspace();
         } else if (key === 46) {
             // Simulate delete
-            value = evt.data.me._simulateDelete();
+            value = this._simulateDelete();
         }
 
         // Evaluate value
-        return evt.data.me._validate(value);
+        return this._validate(value);
     },
 
 
@@ -93,7 +92,7 @@ $.widget('cool.inputFilter', {
 
         // Convert to character
         var c = String.fromCharCode(key);
-        return evt.data.me._validate(evt.data.me._editValue(c));
+        return this._validate(this._editValue(c));
     },
 
 
@@ -103,10 +102,10 @@ $.widget('cool.inputFilter', {
      */
     _paste: function(evt) {
         // Attempt to read from clipboard
-        var value = evt.data.me._readClipboard(evt);
+        var value = this._readClipboard(evt);
 
         // Validate result
-        return value === null ? false : evt.data.me._validate(evt.data.me._editValue(value));
+        return value === null ? false : this._validate(this._editValue(value));
     },
 
 
@@ -137,16 +136,18 @@ $.widget('cool.inputFilter', {
         if (value === this.element[0].value)
             return true;
 
-        if (this._trigger('beforeValidate', {element: this.element, value: value})) {
+        if (this._trigger('beforeValidate', {}, {element: this.element, value: value})) {
+            
+            // Validate
+            var isValid;
             if (this.options.regex !== null) {
-                if (this.options.regex.test(value)) {
-                    return this._trigger('afterValidate', {element: this.element, value: value});
-                }
+                isValid = this.options.regex.test(value);
             } else {
-                if (this._trigger('validate', {element: this.element, value: value})) {
-                    return this._trigger('afterValidate', {element: this.element, value: value});
-                }
+                isValid = this._trigger('validate', {}, {element: this.element, value: value});
             }
+            
+            // After validate
+            return isValid && this._trigger('afterValidate', {}, {element: this.element, value: value, isValid: isValid});
         }
 
         return false;
@@ -233,4 +234,5 @@ $.widget('cool.inputFilter', {
             return {start: this.element[0].selectionStart, end: this.element[0].selectionEnd};
         }
     }
+});
 });
