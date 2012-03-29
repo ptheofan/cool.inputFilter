@@ -28,7 +28,7 @@ $(function(){
 $.widget('cool.inputFilter', {
     options: {
         // RegExp object to use for validation. Can be null if you register your own validate event handler
-        regex: null,
+        regex: null
     },
 
 
@@ -86,7 +86,7 @@ $.widget('cool.inputFilter', {
         var key = evt.charCode || evt.keyCode;                
 
         // Ignore function keys
-        if (evt.keyCode === 0) return true;
+//        if (evt.keyCode === 0) return true;       -- mozila Compatibility
         if (evt.ctrlKey || evt.altKey) return true;
         if (key < 32) return true;
 
