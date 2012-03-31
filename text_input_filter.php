@@ -23,48 +23,177 @@
         
         input[type=text]:hover, input[type=text]:active, input[type=text]:focus { border-color: #003399; }
     </style>
-    <ul>
-        <li class="title">Simple case</li>
-        <li>This textbox uses basic filtering via a provided regex</li>
-        <li><input type="text" id="case1"/></li>
-        <li>&nbsp;</li>
-        <li class="title">The beginning of a mask input</li>
-        <li>This textbox allows values between 0.20 and 100.50.</li>
-        <li>If you enter any value outside the range it will automatically set it to the range</li>
-        <li>This could be the base for a masked edit control</li>
-        <li><input type="text" id="case2"/></li>
-    </ul>
+	<h1>TextInput</h1>
+
+	<section>
+	    Text input control<br/>
+	    <strong>Rules</strong>
+	    <ul>
+	        <li>This is an ordinary HTML5 <code>input[type=text]</code></li>
+	    </ul>
+	    <input type="text" value="" placeholder="HTML5 placeholder"/>
+	</section>
+
+
+	<section>
+	    Text input control using the basic functionality of <code>jquery.cool.inputFilter</code><br/>
+	    <strong>Rules</strong>
+	    <ul>
+	        <li>Accepts float number (only digits)</li>
+	        <li>Float number can have up to 2 decimal digits</li>
+	    </ul>
+	    <input id="input1" type="text" value="" placeholder="Type a float {4.2}"/>
+	    <div class="sourceCode">
+	        Source Code
+	        <pre class="brush:js">
+	            $('#input1').inputFilter({regex: /^\d*$|^\d*(\.|\,)\d{0,2}$/});
+	        </pre>
+	    </div>
+	</section>
+
+
+	<section>
+	    Text input control using the <code>jquery.cool.inputFilter.afterValidate</code> event<br/>
+	    <strong>Rules</strong>
+	    <ul>
+	        <li>Accepts float number (only digits)</li>
+	        <li>Float number can have up to 2 decimal digits</li>
+	        <li>Decimal point separator must be '.'</li>
+	        <li>User is allowed to type ',' which will be automatically converted to '.'</li>
+	        <li>Value cannot be less than 10</li>
+	        <li>Value cannot be more than 10000</li>
+	        <li>Value can be empty</li>
+	        <li> -- evt: KeyUp will fire only when input was actually modified</li>
+	        <li> -- Highlighted when <span id="keyUpFired"><strong>KeyUp has fired</strong></span></li>
+	    </ul>
+	    <input id="input2" type="text" value="" class="span-10 noFloat" placeholder="Type a float (10 < float < 1000)"/>
+	    <div class="sourceCode">
+	        Source Code
+	        <pre class="brush:js">
+	            $('#input2').inputFilter({
+	                regex: /^\d*$|^\d*(\.|\,)\d{0,2}$/,
+
+	                /**
+	                 * BeforeValidate is an ideal place to do any character mapping
+	                 */
+	                beforeValidate: function(evt, data) {
+	                    // No fancy input mapping. Simply convert any , to .
+	                    if (data.userInput && data.userInput.indexOf(',') != -1) {
+	                        data.widget.evtData.userInput = data.userInput.replace(',', '.');
+	                    }
+
+	                    return true;
+	                },
+	                /**
+	                 * AfterValidate is where our boundaries 'n cool input constraining takes place
+	                 */
+	                afterValidate: function(evt, data) {
+	                    // If validation failed do nothing ;)
+	                    if (!data.isValid) return true;
+
+	                    // Max = 10000
+	                    if (data.value > 10000) {
+	                        data.widget.evtData.value = 10000;
+
+	                        // Reject user keystroke -- any return will do though ;)
+	                        return false;
+	                    }
+
+	                    // From this point onward, we may cancel the keystroke BUT
+	                    // we want the keyup event to run
+	                    data.widget.evtData.preventKeyUp = false;
+
+	                    // Min = 10  --  if value < 10 then EMPTY the input
+	                    if (data.value.length < 2 && data.isDelete === true) {
+	                        data.widget.evtData.value = '';
+
+	                        // Reject user keystroke
+	                        return false;
+	                    }
+
+	                    // Min = 10
+	                    if (data.value < 10) {
+	                        data.widget.evtData.value = 10;
+
+	                        // Reject user keystroke
+	                        return false;
+	                    }
+
+	                    return 100;
+	                },
+
+	                /**
+	                 * If I wanted to update any element here's where I would do it
+	                 */
+	                keyup: function(evt, data) {
+	                    $('span#keyUpFired').effect('highlight', {}, 300);
+	                }
+	            })
+	        </pre>
+	    </div>
+	</section>
 <script type="text/javascript">
 $(function(){
-    // Simple
-    $('#case1').inputFilter({regex: /^\d*$|^\d*(\.|\,)\d{0,2}$/});
-    
-    // Impose boundaries
-    $('#case2').inputFilter({
+    $('#input1').inputFilter({regex: /^\d*$|^\d*(\.|\,)\d{0,2}$/});
+    $('#input2').inputFilter({
         regex: /^\d*$|^\d*(\.|\,)\d{0,2}$/,
-        afterValidate: function(evt, obj) {
-            var value = parseFloat(obj.value.replace(',', '.'));
-            
-            // We reach this point only after regex validation. If not numeric
-            // then it's either empty string or ,|. so it's valid and we don't care
-            // to check for boundaries (obviously). Thus, accept user keystroke.
-            if (isNaN(value)) return true;
-            if (value < 0.20) {
-                // Set the value where we want it
-                obj.element.val('0.20');
-                
-                // Prevent user keystroke
+
+        /**
+            * BeforeValidate is an ideal place to do any character mapping
+            */
+        beforeValidate: function(evt, data) {
+            // No fancy input mapping. Simply convert any , to .
+            if (data.userInput && data.userInput.indexOf(',') != -1) {
+                data.widget.evtData.userInput = data.userInput.replace(',', '.');
+            }
+
+            return true;
+        },
+        /**
+            * AfterValidate is where our boundaries 'n cool input constraining takes place
+            */
+        afterValidate: function(evt, data) {
+            // If validation failed do nothing ;)
+            if (!data.isValid) return true;
+
+            // Max = 10000
+            if (data.value > 10000) {
+                data.widget.evtData.value = 10000;
+
+                // Reject user keystroke -- any return will do though ;)
                 return false;
             }
-            if (value > 100.50) {
-                // Set the value where we want it
-                obj.element.val('100.50');
-                
-                // Prevent user keystroke
+
+            // From this point onward, we may cancel the keystroke BUT
+            // we want the keyup event to run
+            data.widget.evtData.preventKeyUp = false;
+
+            // Min = 10  --  if value < 10 then EMPTY the input
+            if (data.value.length < 2 && data.isDelete === true) {
+                data.widget.evtData.value = '';
+
+                // Reject user keystroke
                 return false;
             }
+
+            // Min = 10
+            if (data.value < 10) {
+                data.widget.evtData.value = 10;
+
+                // Reject user keystroke
+                return false;
+            }
+
+            return 100;
+        },
+
+        /**
+            * If I wanted to update any element here's where I would do it
+            */
+        keyup: function(evt, data) {
+            $('span#keyUpFired').effect('highlight', {}, 300);
         }
-    });
+    })
 });
 </script>
 </body>
