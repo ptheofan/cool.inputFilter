@@ -12,9 +12,10 @@
  *          event will be fired.
  *          
  * Events:
- *    beforeValidate
- *    validate
- *    afterValidate
+ *    beforeValidate  --  an ideal place to remap user input
+ *    validate  --  when a regex is not enough
+ *    afterValidate  --  an ideal place to apply logic validation, beyond regex and keystrokes
+ *    KeyUp (overrides default)  --  an ideal place to update your elements should you need to
  *
  *
  * Regexes Cheatsheet (make pull requests should you want to add more)
@@ -28,8 +29,31 @@ $(function(){
 $.widget('cool.inputFilter', {
     options: {
         // RegExp object to use for validation. Can be null if you register your own validate event handler
-        regex: null
+        regex: null,
+        
+        evtData: {
+            isValid: false,
+            value: '',
+            userInput: null,
+            isDelete: false,
+            isEdit: false,
+            isAppend: false,
+            preventKeyUp: null,     // Set to either true/false to override default behaviour
+            widget: null
+        }
     },
+
+    // Holds the preventKeyUp internally determined behaviour
+    // This behaviour will be overriden by options.evtData.preventKeyUp
+    preventKeyUp: false,
+    
+    // The original user input
+    originalUserInput: null,
+    
+    originalValue: null,
+    
+    // EventData vector
+    evtData: null,
 
 
     /**
@@ -38,6 +62,7 @@ $.widget('cool.inputFilter', {
     _init: function() {
         this.element.on('keydown', $.proxy(this._keyDown, this));
         this.element.on('keypress', $.proxy(this._keyPress, this));
+        this.element.on('keyup', $.proxy(this._keyup, this));
         this.element.on('paste', $.proxy(this._paste, this));
     },
 
@@ -48,12 +73,28 @@ $.widget('cool.inputFilter', {
     destroy: function() {
         // Unbind the events
         this.element.off('keydown', this._keyDown);
-        this.element.off('keydown', this._keyPress);
+        this.element.off('keypress', this._keyPress);
         this.element.off('paste', this._paste);
+        this.element.off('keyup', this._paste);
 
 
         // Call parent
         $.cool.inputFilter.prototype.destroy.call(this);
+    },
+
+    /**
+     * KeyUp event handler
+     */
+    _keyup: function(evt) {
+        if (this.evtData.preventKeyUp === true) {
+            return false;
+        }
+        
+        if (this.preventKeyUp === true && this.evtData.preventKeyUp === null) {
+            return false;
+        }
+        
+        return this._trigger('keyup', evt, this.evtData);
     },
 
 
@@ -61,20 +102,24 @@ $.widget('cool.inputFilter', {
      * KeyDown event handler
      */
     _keyDown: function(evt) {
+        // KeyDown is the first event we receive -- create a new evtData structure
+        this.evtData = jQuery.extend(true, {}, this.options.evtData);
+        this.evtData.widget = $(this).inputFilter('widget')[0];
+        
         // Get keycode
         var key = evt.charCode || evt.keyCode;
-        var value = this.element[0].value;
+        this.evtData.value = this.element[0].value;
 
         if (key === 8) {
             // Simulate backspace
-            value = this._simulateBackspace();
+            this.evtData.value = this._simulateBackspace();
         } else if (key === 46) {
             // Simulate delete
-            value = this._simulateDelete();
+            this.evtData.value = this._simulateDelete();
         }
 
         // Evaluate value
-        return this._validate(value);
+        return this._validate(this.evtData.value, evt);
     },
 
 
@@ -92,7 +137,7 @@ $.widget('cool.inputFilter', {
 
         // Convert to character
         var c = String.fromCharCode(key);
-        return this._validate(this._editValue(c));
+        return this._validate(this._editValue(c), evt);
     },
 
 
@@ -105,7 +150,7 @@ $.widget('cool.inputFilter', {
         var value = this._readClipboard(evt);
 
         // Validate result
-        return value === null ? false : this._validate(this._editValue(value));
+        return value === null ? false : this._validate(this._editValue(value), evt);
     },
 
 
@@ -131,25 +176,65 @@ $.widget('cool.inputFilter', {
     /**
      * Validate the value
      */
-    _validate: function(value) {
+    _validate: function(value, evt) {
         // Don't bother validating if nothing's changed
         if (value === this.element[0].value)
             return true;
 
-        if (this._trigger('beforeValidate', {}, {element: this.element, value: value})) {
+        if (this._trigger('beforeValidate', {}, this.evtData)) {
+
+            // Check if user input was modified and replace original _edit with this _edit
+            if (this.evtData.userInput !== this.originalUserInput) {
+                var range = this._getSelectedRegion();
+                var value = this.evtData.value;
+                this.evtData.value = value.substr(0, range.start) + this.evtData.userInput + value.substr(range.end + this.evtData.userInput.length);
+            }
+
             
             // Validate
-            var isValid;
             if (this.options.regex !== null) {
-                isValid = this.options.regex.test(value);
+                this.evtData.isValid = this.options.regex.test(value);
             } else {
-                isValid = this._trigger('validate', {}, {element: this.element, value: value});
+                this.evtData.isValid = this._trigger('validate', {}, this.evtData);
             }
             
+            // Update preventKeyUp
+            this.preventKeyUp = !(this.evtData.isValid && this._trigger('afterValidate', {}, this.evtData));
+
             // After validate
-            return isValid && this._trigger('afterValidate', {}, {element: this.element, value: value, isValid: isValid});
+            var rVal = this.evtData.isValid && this._trigger('afterValidate', {}, this.evtData);
+            
+            // All ok, check if original value was modified
+            if (this.originalValue !== this.evtData.value) {
+                // Set the value as imposed
+                this.element.val(this.evtData.value);
+                
+                // Reject original user input
+                rVal = false;
+
+            // Or if the orignal user input was modified
+            } else if (this.evtData.userInput !== this.originalUserInput && this.evtData.userInput != '') {
+                // software modified keystroke - update accordingly
+                var range = this._getSelectedRegion();
+                this.element.val(value.substr(0, range.start) + this.evtData.userInput + value.substr(range.end + this.evtData.userInput.length));
+                
+                // restore cursor position
+                var curPosOffs = range.end + this.evtData.userInput.length;
+                this._setSelectedRegion(curPosOffs, curPosOffs);
+                
+                // We reject user input hence we replaced it
+                rVal = false;
+            }
+            
+            this.originalUserInput = null;
+            return rVal;
         }
 
+        // Update preventKeyUp
+        this.preventKeyUp = true;
+        this.originalUserInput = null;
+        
+        // validation failed
         return false;
     },
 
@@ -158,19 +243,29 @@ $.widget('cool.inputFilter', {
      * Simulate user clicked delete key
      * @returns string value of element after backspace was pressed
      */
-    _simulateDelete: function() {
+    _simulateDelete: function() {        
+        // Simulate delete...
         var range = this._getSelectedRegion();
-        var value = this.element[0].value;
+        this.evtData.value = this.element[0].value;
 
         // Cursor dead right
-        if (range.start === value.length) return value;
+        if (range.start === this.evtData.value.length) return this.evtData.value;
+        
+        // Update event data
+        this.evtData.isDelete = true;
 
         // Delete character on the right of the cursor
-        if (range.start === range.end)
-            return value.substr(0, range.start) + value.substr(range.end + 1);
+        if (range.start === range.end) {
+            // Update originalValue
+            this.originalValue = this.evtData.value.substr(0, range.start) + this.evtData.value.substr(range.end + 1);
+            return this.originalValue;
+        }
 
+        // Update originalValue
+        this.originalValue = this.evtData.value.substr(0, range.start) + this.evtData.value.substr(range.end);
+        
         // Remove selected text
-        return value.substr(0, range.start) + value.substr(range.end);
+        return this.originalValue;
     },
 
 
@@ -178,19 +273,28 @@ $.widget('cool.inputFilter', {
      * Simulate user clicked backspace key
      * @returns string value of element after backspace was pressed
      */
-    _simulateBackspace: function() {
+    _simulateBackspace: function() {        
+        // Simulate backspace
         var range = this._getSelectedRegion();
-        var value = this.element[0].value;
+        this.evtData.value = this.element[0].value;
 
         // cursor dead left
-        if (range.end <= 0) return value;
+        if (range.end <= 0) return this.evtData.value;
+        
+        // Update event data
+        this.evtData.isDelete = true;
 
         // Delete character on the left of the cursor
-        if (range.start === range.end)
-            return value.substr(0, range.start -1) + value.substr(range.end);
-
+        if (range.start === range.end) {
+            this.originalValue = this.evtData.value.substr(0, range.start -1) + this.evtData.value.substr(range.end);
+            return this.originalValue;
+        }
+        
+        // Update originalValue
+        this.originalValue = this.evtData.value.substr(0, range.start) + this.evtData.value.substr(range.end);
+        
         // Remove selected text
-        return value.substr(0, range.start) + value.substr(range.end);
+        return this.originalValue;
     },
 
 
@@ -203,35 +307,55 @@ $.widget('cool.inputFilter', {
     _editValue: function(subject) {
         var range = this._getSelectedRegion();
         var value = this.element[0].value;
-
-        return value.substr(0, range.start) + subject + value.substr(range.end);
+        
+        // Update evtData.userInput and evtData.value and local originalUserInput
+        this.originalUserInput = subject;
+        this.evtData.userInput = subject;
+        this.evtData.value = value.substr(0, range.start) + subject + value.substr(range.end);
+        this.originalValue = this.evtData.value;
+        
+        if (this.evtData.value.length - 1 == range.end) {
+            this.evtData.isAppend = true;
+        } else {
+            this.evtData.isEdit = true;
+        }
+        
+        return this.evtData.value;
     },
-
+    
 
     /**
      * Get the currently selected text on the control
      */
     _getSelectedRegion: function() {
         if (document.selection != undefined) {
-            // IE SUX! FFS!
-            // The current selection
-            var range = document.selection.createRange();
-            // We'll use this as a 'dummy'
-            var stored_range = range.duplicate();
-            // Select all text
-            stored_range.moveToElementText( this.element );
-            // Now move 'dummy' end point to end point of original range
-            stored_range.setEndPoint( 'EndToEnd', range );
-            // Now we can calculate start and end points
-            var start = stored_range.text.length - range.text.length;
-            var end = start + range.text.length;
+            // IE... MS reinventing the standards... ffs
+            var rng = this.element[0].createTextRange();
+            rng.setEndPoint("EndToStart", document.selection.createRange());
             return {
-                start: start,
-                end: end
-            }
+                start: rng.text.length,
+                end: rng.text.length + document.selection.createRange().text.length
+            };
         } else if (this.element[0].selectionStart != undefined) {
             // Chrome, FFox, Safari, etc...
             return {start: this.element[0].selectionStart, end: this.element[0].selectionEnd};
+        }
+    },
+    
+    
+    /**
+     * Select a specified region in the textbox
+     * FYI: setting start == end will move the cursor there
+     */
+    _setSelectedRegion: function(start, end) {
+        if (this.element[0].setSelectionRange) {
+            this.element[0].setSelectionRange(start, end);
+        } else if (this.element[0].createTextRange) {
+            var range = this.element[0].createTextRange();
+            range.collapse(true);
+            range.moveEnd('character', end);
+            range.moveStart('character', start);
+            range.select();
         }
     }
 });
