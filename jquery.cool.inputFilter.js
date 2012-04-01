@@ -1,11 +1,13 @@
 /**
  * FiterInput
  * @author Paris Theofanidis (ptheofan@gmail.com)
+ * @source https://github.com/ptheofan/cool.inputFilter
+ * @demo http://yeeha.pro/demo/textInput/
  * 
  * Fiter user input in textbox in during keyDown and keyPress events, thus
  * artifact free. This widget will properly handle selected text and paste events.
  * 
- * Tested Under: Chrome, Safari, FireFox
+ * Tested Under: Chrome, Safari, FireFox, IE8, IE9
  * 
  * Options
  *   regex: A  RegExp object which will be used for testing. If null a validate
