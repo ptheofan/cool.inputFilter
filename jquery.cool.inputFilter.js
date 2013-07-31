@@ -107,7 +107,7 @@ $.widget('cool.inputFilter', {
     _keyDown: function(evt) {
         // KeyDown is the first event we receive -- create a new evtData structure
         this.evtData = $.extend(true, {}, this.options.evtData);
-        this.evtData.widget = $(this).inputFilter('widget')[0];
+        this.evtData.widget = this;
 
         // Get keycode
         var key = evt.charCode || evt.keyCode;
@@ -150,7 +150,7 @@ $.widget('cool.inputFilter', {
     _cut: function(evt) {
         // KeyDown is the first event we receive -- create a new evtData structure
         this.evtData = jQuery.extend(true, {}, this.options.evtData);
-        this.evtData.widget = $(this).inputFilter('widget')[0];
+        this.evtData.widget = this;
 
         var rVal = this._validate(this._simulateDelete(), evt);
         return rVal;
